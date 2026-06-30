@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D手势交互陶艺工作室</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            /* 修改背景为暗色水泥墙感觉 */
+            background-color: #2b2b2b; /* Dark cement grey */
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* 摄像头画中画 (PiP) */
+        #pip-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 240px;
+            height: 180px;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            background: #1a1a1a; /* 暗色背景 */
+            z-index: 10;
+        }
+
+        .input_video {
+            display: none; /* 隐藏原始视频，只显示处理后的canvas */
+        }
+
+        .output_canvas {
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1); /* 镜像显示 */
+            object-fit: cover;
+        }
+
+        /* UI 面板容器及面板基础样式 */
+        #ui-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            z-index: 10;
+            max-width: 300px;
+        }
+
+        .panel {
+            background: rgba(40, 40, 40, 0.85); /* 暗色半透明背景 */
+            backdrop-filter: blur(15px);
+            padding: 24px;
+            border-radius: 16px;
+            color: #ccc; /* 浅色文字 */
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 6px 25px rgba(0,0,0,0.2);
+            width: 100%;
+            box-sizing: border-box;
+            transition: all 0.3s;
+        }
+
+        h1 {
+            margin: 0 0 12px 0;
+            font-size: 26px;
+            /* 标题使用暖色渐变以在暗背景下突出 */
+            background: -webkit-linear-gradient(#E3C99D, #C78B5C);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p {
+            font-size: 15px;
+            line-height: 1.6;
+            color: #aaa; /* 浅灰色文字 */
+        }
+
+        .highlight {
+            color: #E3C99D; /* 暖色高亮 */
+            font-weight: bold;
+        }
+
+        /* 颜色选择器样式 */
+        .color-selector {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .color-btn {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            cursor: pointer;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+
+        .color-btn.selected {
+            border-color: #E3C99D; /* 选中时显示暖色边框 */
+            transform: scale(1.1);
+        }
+
+        /* 控件和工具按钮样式 */
+        .control-group {
+            margin-top: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 14px;
+        }
+
+        .tool-selector {
+            display: flex;
+            gap: 10px;
+        }
+
+        .tool-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 18px;
+            background: rgba(0,0,0,0.2);
+            transition: all 0.2s;
+        }
+
+        .tool-btn.selected {
+            border-color: #E3C99D;
+            background: rgba(227, 201, 157, 0.2);
+            transform: scale(1.1);
+        }
+
+        /* 禁用状态的工具样式 */
+        .tool-btn.disabled {
+            opacity: 0.3;
+            pointer-events: none; /* 禁止点击 */
+            filter: grayscale(100%);
+        }
+
+        .sm-btn {
+            width: auto;
+            padding: 6px 12px;
+            margin-top: 0;
+            background: linear-gradient(135deg, #E3C99D, #C78B5C);
+            border: none;
+            border-radius: 6px;
+            color: #2b2b2b;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .sm-btn.stopped {
+            background: #555;
+            color: #ccc;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            margin-top: 18px;
+            /* 按钮使用暖色渐变 */
+            background: linear-gradient(135deg, #C78B5C, #E3C99D);
+            border: none;
+            border-radius: 10px;
+            color: #2b2b2b; /* 按钮上的深色文字 */
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 18px rgba(199, 139, 92, 0.4);
+        }
+
+        /* 重置按钮样式 */
+        #reset-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: auto;
+            padding: 10px 20px;
+            margin-top: 0;
+            z-index: 10;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+
+        #loading-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #2b2b2b; /* 暗色加载背景 */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #ccc; /* 浅色文字 */
+            z-index: 999;
+            transition: opacity 0.5s ease;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(227, 201, 157, 0.2);
+            border-left-color: #E3C99D;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+    </style>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <!-- MediaPipe -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+    <!-- 加载画面 -->
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <h2 id="loading-text">正在加载陶艺工作室...</h2>
+    </div>
+
+    <!-- UI 面板容器 -->
+    <div id="ui-container">
+        <!-- 原始 UI 面板 -->
+        <div class="panel" id="ui-panel">
+            <h1>🏺 3D陶艺工作室</h1>
+            <p>1. 允许浏览器使用摄像头。</p>
+            <p>2. 将手对准镜头，你会看到一个 <span style="color:#66CCFF; font-weight:bold;">亮蓝色光标</span> 跟着你的手移动。</p>
+            <p>3. <span class="highlight">大拇指和食指捏合</span>，光标变红，此时移动手部即可对旋转的陶泥进行**向内推**或**向外拉**的塑形！</p>
+
+            <!-- 颜色选择器 -->
+            <p>4. 选择陶泥颜色：</p>
+            <div class="color-selector">
+                <!-- 更新为十六进制颜色码，方便贴图绘制 -->
+                <div class="color-btn base-color-btn selected" style="background-color: #8a6750;" data-color="#8a6750" title="深陶土色"></div>
+                <div class="color-btn base-color-btn" style="background-color: #785540;" data-color="#785540" title="深赤褐色"></div>
+                <div class="color-btn base-color-btn" style="background-color: #5e3f30;" data-color="#5e3f30" title="深橘黑色"></div>
+            </div>
+
+            <button id="start-btn" style="display:none;">开启摄像头开始体验</button>
+        </div>
+
+        <!-- 工具与控制面板 -->
+        <div class="panel" id="tools-panel">
+            <h2 style="margin:0 0 10px 0; font-size:18px; color:#E3C99D;">🛠️ 控制与工具</h2>
+            
+            <div class="control-group">
+                <span>旋转控制：</span>
+                <button id="toggle-rotation-btn" class="sm-btn active">运转中</button>
+            </div>
+
+            <div class="control-group">
+                <span>当前工具：</span>
+                <div class="tool-selector">
+                    <div class="tool-btn selected" data-tool="hand" title="手 - 捏塑">🖐️</div>
+                    <div class="tool-btn" data-tool="saw" title="线锯 - 切割">🧵</div>
+                    <!-- 新增画笔工具 -->
+                    <div class="tool-btn" data-tool="brush" title="画笔 - 上色">🖌️</div>
+                </div>
+            </div>
+
+            <!-- 新增：调色盘子面板 (仅在选择画笔时显示) -->
+            <div id="palette-panel" style="display: none; margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 15px;">
+                <span style="font-size: 14px;">画笔颜色：</span>
+                <div class="color-selector" id="brush-colors">
+                    <div class="color-btn brush-color-btn selected" style="background-color: #FFFFFF;" data-color="#FFFFFF"></div>
+                    <div class="color-btn brush-color-btn" style="background-color: #d14232;" data-color="#d14232"></div>
+                    <div class="color-btn brush-color-btn" style="background-color: #41a0e0;" data-color="#41a0e0"></div>
+                    <div class="color-btn brush-color-btn" style="background-color: #f2c616;" data-color="#f2c616"></div>
+                    <div class="color-btn brush-color-btn" style="background-color: #69b88a;" data-color="#69b88a"></div>
+                </div>
+                <div style="margin-top: 15px; display: flex; align-items: center; font-size: 14px;">
+                    <span style="white-space: nowrap;">笔刷粗细：</span>
+                    <input type="range" id="brush-size-slider" min="5" max="60" value="15" style="flex: 1; margin-left: 10px; cursor: pointer;">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右上角重置按钮 -->
+    <button id="reset-btn">🔄 重置陶泥</button>
+
+    <!-- 摄像头画中画 -->
+    <div id="pip-container">
+        <video class="input_video" autoplay playsinline></video>
+        <canvas class="output_canvas" width="320" height="240"></canvas>
+    </div>
+
+    <!-- 3D 渲染容器 -->
+    <div id="canvas-container"></div>
+
+    <script>
+        // ==========================================
+        // 1. 三维场景设置 (Three.js) - 陶艺工作室调
+        // ==========================================
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        
+        const bgColor = new THREE.Color(0x2b2b2b);
+        scene.background = bgColor;
+        scene.fog = new THREE.FogExp2(0x2b2b2b, 0.02);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 9, 23);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        container.appendChild(renderer.domElement);
+
+        // ==========================================
+        // 灯光设置
+        // ==========================================
+        const ambientLight = new THREE.AmbientLight(0x333333, 0.6);
+        scene.add(ambientLight);
+
+        const leftWhiteLight = new THREE.SpotLight(0xffffff, 2.0); 
+        leftWhiteLight.position.set(-15, 15, 10);
+        leftWhiteLight.angle = Math.PI / 4; 
+        leftWhiteLight.penumbra = 0.6;
+        leftWhiteLight.castShadow = true;
+        leftWhiteLight.shadow.mapSize.width = 2048; 
+        leftWhiteLight.shadow.mapSize.height = 2048;
+        scene.add(leftWhiteLight);
+
+        const rightWarmLight = new THREE.SpotLight(0xffcc55, 2.5);
+        rightWarmLight.position.set(12, 10, 20);
+        rightWarmLight.angle = Math.PI / 4; 
+        rightWarmLight.penumbra = 0.6; 
+        rightWarmLight.castShadow = true;
+        rightWarmLight.shadow.mapSize.width = 2048; 
+        rightWarmLight.shadow.mapSize.height = 2048;
+        scene.add(rightWarmLight);
+
+        // ==========================================
+        // 2. 场景物件：木桌、陶泥及拉胚机
+        // ==========================================
+        const textureLoader = new THREE.TextureLoader();
+        const woodBaseColor = textureLoader.load('https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/textures/hardwood2_diffuse.jpg');
+        const woodNormalMap = textureLoader.load('https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/textures/hardwood2_bump.jpg');
+        const woodRoughnessMap = textureLoader.load('https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/textures/hardwood2_roughness.jpg');
+
+        [woodBaseColor, woodNormalMap, woodRoughnessMap].forEach(texture => {
+            texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(2, 2);
+        });
+        woodBaseColor.encoding = THREE.sRGBEncoding;
+
+        const tableGeo = new THREE.CylinderGeometry(15, 15, 0.8, 64);
+        const tableMat = new THREE.MeshStandardMaterial({ 
+            map: woodBaseColor,
+            normalMap: woodNormalMap,
+            roughnessMap: woodRoughnessMap,
+            color: 0xD9C8B4, 
+            roughness: 0.85,   
+            metalness: 0.05,
+            side: THREE.DoubleSide
+        });
+        const table = new THREE.Mesh(tableGeo, tableMat);
+        table.position.y = -3.9; 
+        table.receiveShadow = true;
+        table.rotation.y = Math.PI / 2; 
+        scene.add(table);
+        
+        const wheelGeo = new THREE.CylinderGeometry(4.5, 4.5, 0.5, 64);
+        const wheelMat = new THREE.MeshStandardMaterial({ color: 0x9DA6A9, metalness: 0.6, roughness: 0.4 });
+        const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+        wheel.position.y = -3.25; 
+        wheel.receiveShadow = true;
+        wheel.castShadow = true;
+        scene.add(wheel);
+
+        // ==========================================
+        // 画笔贴图系统 (用于绘制和动态更改底色)
+        // ==========================================
+        const TEX_SIZE = 1024;
+        
+        // 专门用于保存画笔笔触的离屏画布
+        const strokeCanvas = document.createElement('canvas');
+        strokeCanvas.width = TEX_SIZE; strokeCanvas.height = TEX_SIZE;
+        const strokeCtx = strokeCanvas.getContext('2d');
+
+        // 用于混合底色和笔触，并最终贴在模型上的画布
+        const mixCanvas = document.createElement('canvas');
+        mixCanvas.width = TEX_SIZE; mixCanvas.height = TEX_SIZE;
+        const mixCtx = mixCanvas.getContext('2d');
+
+        const paintTexture = new THREE.CanvasTexture(mixCanvas);
+        paintTexture.encoding = THREE.sRGBEncoding;
+
+        let currentBaseColor = '#8a6750'; // 默认陶泥底色
+        
+        // 更新贴图函数
+        function updateTexture() {
+            // 1. 铺满底色
+            mixCtx.fillStyle = currentBaseColor;
+            mixCtx.fillRect(0, 0, TEX_SIZE, TEX_SIZE);
+            // 2. 叠加上面的笔触
+            mixCtx.drawImage(strokeCanvas, 0, 0);
+            paintTexture.needsUpdate = true;
+        }
+        updateTexture(); // 初始化调用
+
+        // ==========================================
+        // 陶泥生成算法
+        // ==========================================
+        const clayHeight = 8;
+        const baseRadius = 2.5;
+        const radialSegments = 64;
+        const heightSegments = 100; 
+        const clayThickness = 0.15; 
+        const clayBottomThickness = 0.15; 
+
+        const points = [];
+        points.push(new THREE.Vector2(0, -clayHeight/2));
+        for (let i = 0; i <= heightSegments; i++) {
+            let y = -clayHeight/2 + (i/heightSegments)*clayHeight;
+            points.push(new THREE.Vector2(baseRadius, y));
+        }
+        points.push(new THREE.Vector2(baseRadius - clayThickness/2, clayHeight/2));
+        for (let i = heightSegments; i >= 0; i--) {
+            let y = -clayHeight/2 + (i/heightSegments)*clayHeight;
+            if (y > -clayHeight/2 + clayBottomThickness) {
+                points.push(new THREE.Vector2(baseRadius - clayThickness, y));
+            }
+        }
+        points.push(new THREE.Vector2(baseRadius - clayThickness, -clayHeight/2 + clayBottomThickness));
+        points.push(new THREE.Vector2(0, -clayHeight/2 + clayBottomThickness));
+
+        const clayGeometry = new THREE.LatheGeometry(points, radialSegments);
+        
+        const clayMaterial = new THREE.MeshPhysicalMaterial({
+            map: paintTexture,  // 使用动态贴图
+            color: 0xffffff,    // 必须设为白色，避免材料颜色影响贴图颜色
+            roughness: 0.3,  
+            metalness: 0.0,
+            clearcoat: 0.8,        
+            clearcoatRoughness: 0.2, 
+            flatShading: false,
+            side: THREE.DoubleSide
+        });
+        const clayMesh = new THREE.Mesh(clayGeometry, clayMaterial);
+        clayMesh.position.y = clayHeight / 2 - 3.05; 
+        clayMesh.castShadow = true;
+        clayMesh.receiveShadow = true;
+        scene.add(clayMesh);
+
+        // 陶泥底色选择事件监听
+        const baseColorBtns = document.querySelectorAll('.base-color-btn');
+        baseColorBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                baseColorBtns.forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                currentBaseColor = btn.getAttribute('data-color');
+                updateTexture(); // 更新底色而不丢失笔触
+            });
+        });
+
+        // 状态变量
+        let isRotating = true;
+        let currentTool = 'hand'; 
+        let cutLevel = heightSegments + 1; 
+
+        let currentBrushColor = '#FFFFFF';
+        let currentBrushSize = 15;
+
+        const rotateBtn = document.getElementById('toggle-rotation-btn');
+        const handToolBtn = document.querySelector('.tool-btn[data-tool="hand"]');
+        const palettePanel = document.getElementById('palette-panel');
+
+        rotateBtn.addEventListener('click', () => {
+            isRotating = !isRotating;
+            if (isRotating) {
+                rotateBtn.innerText = '运转中';
+                rotateBtn.className = 'sm-btn active';
+                handToolBtn.classList.remove('disabled'); 
+            } else {
+                rotateBtn.innerText = '已停止';
+                rotateBtn.className = 'sm-btn stopped';
+                handToolBtn.classList.add('disabled'); 
+                if (currentTool === 'hand') {
+                    // 如果停止时在“手”工具上，自动切走
+                    document.querySelector('.tool-btn[data-tool="saw"]').click();
+                }
+            }
+        });
+
+        const toolBtns = document.querySelectorAll('.tool-btn');
+        toolBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (btn.classList.contains('disabled')) return;
+                
+                toolBtns.forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                currentTool = btn.getAttribute('data-tool');
+                
+                // 控制调色盘的显示隐藏
+                if (currentTool === 'brush') {
+                    palettePanel.style.display = 'block';
+                } else {
+                    palettePanel.style.display = 'none';
+                }
+            });
+        });
+
+        // 画笔颜色选择器
+        const brushColorBtns = document.querySelectorAll('.brush-color-btn');
+        brushColorBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                brushColorBtns.forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                currentBrushColor = btn.getAttribute('data-color');
+            });
+        });
+
+        // 画笔粗细滑块
+        const brushSizeSlider = document.getElementById('brush-size-slider');
+        brushSizeSlider.addEventListener('input', (e) => {
+            currentBrushSize = parseInt(e.target.value);
+        });
+
+        const resetBtn = document.getElementById('reset-btn');
+        resetBtn.addEventListener('click', () => {
+            clayProfile.fill(baseRadius);
+            cutLevel = heightSegments + 1;
+            // 清除画笔痕迹
+            strokeCtx.clearRect(0, 0, TEX_SIZE, TEX_SIZE);
+            updateTexture();
+        });
+
+        const positionAttribute = clayGeometry.attributes.position;
+        const vertexData = []; 
+        const clayProfile = new Float32Array(heightSegments + 1).fill(baseRadius); 
+
+        for (let i = 0; i < positionAttribute.count; i++) {
+            const x = positionAttribute.getX(i);
+            const y = positionAttribute.getY(i);
+            const z = positionAttribute.getZ(i);
+            const r = Math.sqrt(x*x + z*z);
+            const angle = Math.atan2(z, x);
+            
+            if (r < 0.001) {
+                vertexData.push({ index: i, isCenter: true, originalY: y });
+                continue;
+            }
+
+            const ny = (y + clayHeight / 2) / clayHeight;
+            const segmentIdx = Math.max(0, Math.min(heightSegments, Math.round(ny * heightSegments)));
+            const radiusOffset = baseRadius - r;
+
+            vertexData.push({ 
+                index: i, 
+                angle: angle, 
+                segmentIdx: segmentIdx, 
+                radiusOffset: radiusOffset,
+                isCenter: false,
+                originalY: y 
+            });
+        }
+
+        // ==========================================
+        // 3. 交互光标与射线设置
+        // ==========================================
+        const cursorGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+        const cursorMaterial = new THREE.MeshBasicMaterial({ color: 0x66CCFF, transparent: true, opacity: 0.8, depthTest: false });
+        const cursorMesh = new THREE.Mesh(cursorGeometry, cursorMaterial);
+        cursorMesh.renderOrder = 999; 
+        scene.add(cursorMesh);
+
+        const sawGeometry = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(-15, 0, 0),
+            new THREE.Vector3(15, 0, 0)
+        ]);
+        const sawMaterial = new THREE.LineDashedMaterial({
+            color: 0xCCCCCC, 
+            linewidth: 4,    
+            scale: 1,
+            dashSize: 0.5,
+            gapSize: 0.5,
+            depthTest: false
+        });
+        const sawLine = new THREE.Line(sawGeometry, sawMaterial);
+        sawLine.computeLineDistances(); 
+        sawLine.renderOrder = 999;
+        sawLine.visible = false;
+        scene.add(sawLine);
+
+        // 射线投影器 (用于画笔拾取坐标)
+        const raycaster = new THREE.Raycaster();
+
+        let cursorX = 0, cursorY = clayHeight / 2 - 3; 
+        let targetCursorX = 0, targetCursorY = clayHeight / 2 - 3; 
+        let isPinching = false;
+        let isGrabbingClay = false;
+
+        function shapeClay(ny, targetRadius, intensity) {
+            const centerIdx = Math.round(ny * heightSegments);
+            const brushSize = 6; 
+
+            for (let i = -brushSize; i <= brushSize; i++) {
+                const idx = centerIdx + i;
+                if (idx >= 0 && idx <= heightSegments && idx < cutLevel) {
+                    const falloff = Math.exp(-(i * i) / (brushSize * brushSize * 0.4));
+                    clayProfile[idx] = THREE.MathUtils.lerp(clayProfile[idx], targetRadius, intensity * falloff);
+                    clayProfile[idx] = Math.max(0.05 + clayThickness, Math.min(clayProfile[idx], 4.2));
+                }
+            }
+        }
+
+        // ==========================================
+        // 4. MediaPipe AI 手势追踪设置
+        // ==========================================
+        const videoElement = document.getElementsByClassName('input_video')[0];
+        const canvasElement = document.getElementsByClassName('output_canvas')[0];
+        const canvasCtx = canvasElement.getContext('2d');
+
+        function onResults(results) {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            canvasCtx.translate(canvasElement.width, 0);
+            canvasCtx.scale(-1, 1);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#66CCFF', lineWidth: 2}); 
+                drawLandmarks(canvasCtx, landmarks, {color: '#FF6666', lineWidth: 1, radius: 2}); 
+
+                const indexTip = landmarks[8];
+                const thumbTip = landmarks[4];
+
+                const pinchDist = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
+                const currentlyPinching = pinchDist < 0.05; 
+
+                let midX = (indexTip.x + thumbTip.x) / 2;
+                let midY = (indexTip.y + thumbTip.y) / 2;
+
+                let handX = 1.0 - midX; 
+                let handY = midY;
+
+                const newTargetCursorX = (handX - 0.5) * 16; 
+                const newTargetCursorY = -(handY - 0.5) * 12 + 1; 
+
+                if (currentlyPinching) {
+                    if (!isPinching) {
+                        const clayBottom = clayMesh.position.y - clayHeight / 2;
+                        let ny = (newTargetCursorY - clayBottom) / clayHeight;
+                        const segmentIdx = Math.max(0, Math.min(heightSegments, Math.round(ny * heightSegments)));
+                        const currentClayRadius = clayProfile[segmentIdx];
+                        const currentHandRadius = Math.abs(newTargetCursorX);
+
+                        if (currentHandRadius <= currentClayRadius + 0.3 && ny >= -0.05 && ny <= 1.05) {
+                            isGrabbingClay = true;
+                        } else {
+                            isGrabbingClay = false;
+                        }
+                    }
+                } else {
+                    isGrabbingClay = false;
+                }
+
+                isPinching = currentlyPinching;
+                targetCursorX = newTargetCursorX;
+                targetCursorY = newTargetCursorY;
+
+            } else {
+                isPinching = false;
+                isGrabbingClay = false;
+            }
+            canvasCtx.restore();
+        }
+
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+        
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.7
+        });
+        
+        hands.onResults(onResults);
+
+        // ==========================================
+        // 5. 动画渲染与主循环
+        // ==========================================
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            cursorX = THREE.MathUtils.lerp(cursorX, targetCursorX, 0.2);
+            cursorY = THREE.MathUtils.lerp(cursorY, targetCursorY, 0.2);
+            
+            // 工具逻辑处理
+            if (currentTool === 'saw') {
+                sawLine.visible = true;
+                cursorMesh.visible = false;
+                sawLine.position.set(cursorX, cursorY, 0); 
+                
+                if (isPinching) {
+                    sawLine.material.color.setHex(0xFFC0CB); 
+                    const clayBottom = clayMesh.position.y - clayHeight/2;
+                    let ny = (cursorY - clayBottom) / clayHeight;
+                    if (ny >= 0 && ny <= 1) {
+                        const segmentIdx = Math.max(0, Math.min(heightSegments, Math.round(ny * heightSegments)));
+                        cutLevel = Math.min(cutLevel, segmentIdx);
+                    }
+                } else {
+                    sawLine.material.color.setHex(0xCCCCCC); 
+                }
+            } else if (currentTool === 'brush') {
+                sawLine.visible = false;
+                cursorMesh.visible = true;
+                cursorMesh.position.set(cursorX, cursorY, 0);
+                
+                // 画笔状态下，光标变成你选择的颜色，提醒当前颜色
+                cursorMaterial.color.set(currentBrushColor);
+
+                if (isPinching) {
+                    cursorMesh.scale.set(1.5, 1.5, 1.5);
+                    
+                    // 用射线拾取模型表面的 UV 坐标来实现绘画
+                    clayGeometry.computeBoundingSphere();
+                    clayGeometry.computeBoundingBox();
+                    // 把屏幕视觉上的光标坐标转化，发出射线
+                    const cursorNDC = cursorMesh.position.clone().project(camera);
+                    raycaster.setFromCamera(cursorNDC, camera);
+                    
+                    const intersects = raycaster.intersectObject(clayMesh);
+                    if (intersects.length > 0) {
+                        // 如果碰到了陶泥
+                        const uv = intersects[0].uv;
+                        strokeCtx.fillStyle = currentBrushColor;
+                        
+                        // Three.js的 UV 原点在左下，Canvas的在左上，需要 1 - y
+                        const drawY = (1 - uv.y) * TEX_SIZE;
+
+                        if (isRotating) {
+                            // 旋转时，画一整条水平带子 (形成圆环)
+                            strokeCtx.fillRect(0, drawY - currentBrushSize / 2, TEX_SIZE, currentBrushSize);
+                        } else {
+                            // 停止时，像普通画笔一样画圆点
+                            const drawX = uv.x * TEX_SIZE;
+                            strokeCtx.beginPath();
+                            strokeCtx.arc(drawX, drawY, currentBrushSize / 2, 0, Math.PI * 2);
+                            strokeCtx.fill();
+                            
+                            // 解决左右边缘贴图接缝问题
+                            if (drawX - currentBrushSize / 2 < 0) {
+                                strokeCtx.beginPath();
+                                strokeCtx.arc(drawX + TEX_SIZE, drawY, currentBrushSize / 2, 0, Math.PI * 2);
+                                strokeCtx.fill();
+                            } else if (drawX + currentBrushSize / 2 > TEX_SIZE) {
+                                strokeCtx.beginPath();
+                                strokeCtx.arc(drawX - TEX_SIZE, drawY, currentBrushSize / 2, 0, Math.PI * 2);
+                                strokeCtx.fill();
+                            }
+                        }
+                        updateTexture(); // 更新混合结果
+                    }
+                } else {
+                    cursorMesh.scale.set(1, 1, 1);
+                }
+            } else {
+                // 原有的“手”塑形工具
+                sawLine.visible = false;
+                cursorMesh.visible = true;
+                cursorMesh.position.set(cursorX, cursorY, 0);
+                
+                if (isGrabbingClay && isRotating) {
+                    cursorMaterial.color.setHex(0xFF6666); 
+                    cursorMesh.scale.set(1.5, 1.5, 1.5);
+                    const clayBottom = clayMesh.position.y - clayHeight/2;
+                    let ny = (cursorY - clayBottom) / clayHeight;
+                    if (ny >= 0 && ny <= 1) {
+                        const targetRadius = Math.abs(cursorX);
+                        shapeClay(ny, targetRadius, 0.15); 
+                    }
+                } else {
+                    cursorMaterial.color.setHex(0x66CCFF); 
+                    cursorMesh.scale.set(1, 1, 1);
+                }
+            }
+
+            // 更新陶泥的三维顶点
+            for (let i = 0; i < positionAttribute.count; i++) {
+                const v = vertexData[i];
+                if (v.isCenter) continue;
+
+                let isCut = v.segmentIdx > cutLevel;
+                let effectiveIdx = isCut ? cutLevel : v.segmentIdx;
+
+                const targetOuterRadius = clayProfile[effectiveIdx];
+                let newRadius = targetOuterRadius - v.radiusOffset;
+                
+                if (v.radiusOffset > 0) { 
+                    newRadius = Math.max(0.01, newRadius); 
+                }
+
+                const newX = newRadius * Math.cos(v.angle);
+                const newZ = newRadius * Math.sin(v.angle);
+                positionAttribute.setX(v.index, newX);
+                positionAttribute.setZ(v.index, newZ);
+
+                let newY = isCut ? (-clayHeight/2 + (cutLevel / heightSegments) * clayHeight) : v.originalY;
+                positionAttribute.setY(v.index, newY);
+            }
+            positionAttribute.needsUpdate = true;
+            clayGeometry.computeVertexNormals(); 
+
+            // 旋转模型 (受开关控制)
+            const delta = clock.getDelta();
+            if (isRotating) {
+                const rotationSpeed = 3.0; 
+                clayMesh.rotation.y += rotationSpeed * delta;
+                wheel.rotation.y += rotationSpeed * delta;
+                table.rotation.y += rotationSpeed * delta * 0.05; 
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // ==========================================
+        // 6. 初始化与事件监听
+        // ==========================================
+        
+        hands.initialize().then(() => {
+            const overlay = document.getElementById('loading-overlay');
+            overlay.style.opacity = '0';
+            setTimeout(() => {
+                overlay.style.display = 'none';
+            }, 500);
+            
+            const btn = document.getElementById('start-btn');
+            btn.style.display = 'block';
+            
+            btn.addEventListener('click', () => {
+                btn.innerText = '正在请求摄像头权限...';
+                btn.style.opacity = '0.7';
+                btn.disabled = true;
+
+                const camera = new Camera(videoElement, {
+                    onFrame: async () => {
+                        await hands.send({image: videoElement});
+                    },
+                    width: 640,
+                    height: 480
+                });
+                camera.start();
+
+                videoElement.onplaying = () => {
+                    btn.style.display = 'none';
+                };
+            });
+        }).catch(err => {
+            document.getElementById('loading-text').innerText = "模型加载失败，请检查网络或刷新重试";
+            console.error(err);
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+
+    </script>
+</body>
+</html>
