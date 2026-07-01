@@ -114,6 +114,26 @@
             transform: scale(1.1);
         }
 
+        /* 新增：自定义调色板按钮样式 */
+        .custom-color-wrapper {
+            position: relative;
+            overflow: hidden;
+            background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
+        }
+
+        /* 修改：彻底隐藏原生的 input color 避免边框漏出，通过JS调用点击 */
+        .custom-color-wrapper input[type="color"] {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
         /* 控件和工具按钮样式 */
         .control-group {
             margin-top: 15px;
@@ -194,16 +214,38 @@
             box-shadow: 0 5px 18px rgba(199, 139, 92, 0.4);
         }
 
-        /* 重置按钮样式 */
-        #reset-btn {
+        /* 右侧操作按钮组 (包含重置、拍照、导出) */
+        #right-actions {
             position: absolute;
             top: 20px;
             right: 20px;
-            width: auto;
-            padding: 10px 20px;
-            margin-top: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
             z-index: 10;
+        }
+
+        .action-btn {
+            width: auto;
+            padding: 12px 20px;
+            margin-top: 0;
+            background: rgba(40, 40, 40, 0.85);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            color: #E3C99D;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+
+        .action-btn:hover {
+            background: rgba(227, 201, 157, 0.2);
+            border-color: #E3C99D;
+            transform: translateY(-2px);
         }
 
         #loading-overlay {
@@ -231,9 +273,86 @@
 
         @keyframes spin { 100% { transform: rotate(360deg); } }
 
+        /* 新增：闪光灯特效和照片预览弹窗样式 */
+        #flash-effect {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: white;
+            z-index: 9999;
+            opacity: 0;
+            pointer-events: none;
+        }
+        .flash-anim {
+            animation: flashAnimation 0.6s ease-out;
+        }
+        @keyframes flashAnimation {
+            0% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+
+        #photo-preview-modal {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(10px);
+            z-index: 2000;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        #photo-preview-modal.show {
+            display: flex;
+            opacity: 1;
+        }
+        #preview-image {
+            max-height: 65vh;
+            max-width: 90vw;
+            border-radius: 8px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.6);
+            margin-bottom: 25px;
+            background: #FAFAFA; /* 拍立得底色 */
+        }
+        .modal-actions {
+            display: flex;
+            gap: 20px;
+        }
+        .modal-btn {
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #E3C99D, #C78B5C);
+            border: none;
+            border-radius: 8px;
+            color: #2b2b2b;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        .modal-btn.secondary {
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            border: 1px solid rgba(255,255,255,0.3);
+            box-shadow: none;
+        }
+        .modal-btn:hover {
+            transform: translateY(-2px);
+        }
+        .modal-btn.secondary:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
     </style>
     <!-- Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <!-- Three.js OrbitControls 鼠标控制 -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <!-- 新增：Three.js GLTFExporter 导出3D模型 -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
     
     <!-- MediaPipe -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -257,11 +376,11 @@
             <p>1. 允许浏览器使用摄像头。</p>
             <p>2. 将手对准镜头，你会看到一个 <span style="color:#66CCFF; font-weight:bold;">亮蓝色光标</span> 跟着你的手移动。</p>
             <p>3. <span class="highlight">大拇指和食指捏合</span>，光标变红，此时移动手部即可对旋转的陶泥进行**向内推**或**向外拉**的塑形！</p>
+            <p>4. 🖱️ <span style="color:#FFF;">用鼠标拖拽背景</span> 可任意旋转视角！</p> <!-- 提示新增功能 -->
 
             <!-- 颜色选择器 -->
-            <p>4. 选择陶泥颜色：</p>
+            <p>5. 选择陶泥颜色：</p>
             <div class="color-selector">
-                <!-- 更新为十六进制颜色码，方便贴图绘制 -->
                 <div class="color-btn base-color-btn selected" style="background-color: #8a6750;" data-color="#8a6750" title="深陶土色"></div>
                 <div class="color-btn base-color-btn" style="background-color: #785540;" data-color="#785540" title="深赤褐色"></div>
                 <div class="color-btn base-color-btn" style="background-color: #5e3f30;" data-color="#5e3f30" title="深橘黑色"></div>
@@ -284,12 +403,10 @@
                 <div class="tool-selector">
                     <div class="tool-btn selected" data-tool="hand" title="手 - 捏塑">🖐️</div>
                     <div class="tool-btn" data-tool="saw" title="线锯 - 切割">🧵</div>
-                    <!-- 新增画笔工具 -->
                     <div class="tool-btn" data-tool="brush" title="画笔 - 上色">🖌️</div>
                 </div>
             </div>
 
-            <!-- 新增：调色盘子面板 (仅在选择画笔时显示) -->
             <div id="palette-panel" style="display: none; margin-top: 15px; border-top: 1px solid rgba(255,255,255,0.2); padding-top: 15px;">
                 <span style="font-size: 14px;">画笔颜色：</span>
                 <div class="color-selector" id="brush-colors">
@@ -298,6 +415,10 @@
                     <div class="color-btn brush-color-btn" style="background-color: #41a0e0;" data-color="#41a0e0"></div>
                     <div class="color-btn brush-color-btn" style="background-color: #f2c616;" data-color="#f2c616"></div>
                     <div class="color-btn brush-color-btn" style="background-color: #69b88a;" data-color="#69b88a"></div>
+                    <!-- 新增：画笔自定义自由选色 -->
+                    <div class="color-btn brush-color-btn custom-color-wrapper" id="custom-brush-btn" title="自定义颜色" data-color="#000000">
+                        <input type="color" id="custom-brush-input" value="#000000">
+                    </div>
                 </div>
                 <div style="margin-top: 15px; display: flex; align-items: center; font-size: 14px;">
                     <span style="white-space: nowrap;">笔刷粗细：</span>
@@ -307,8 +428,24 @@
         </div>
     </div>
 
-    <!-- 右上角重置按钮 -->
-    <button id="reset-btn">🔄 重置陶泥</button>
+    <!-- 右上角操作按钮组 -->
+    <div id="right-actions">
+        <button id="reset-btn" class="action-btn">🔄 重置陶泥</button>
+        <button id="photo-btn" class="action-btn">📷 拍立得截图</button>
+        <button id="export-btn" class="action-btn">💾 保存3D模型</button>
+    </div>
+
+    <!-- 新增：闪光灯特效容器 -->
+    <div id="flash-effect"></div>
+
+    <!-- 新增：照片预览弹窗 -->
+    <div id="photo-preview-modal">
+        <img id="preview-image" src="" alt="截图预览">
+        <div class="modal-actions">
+            <button id="close-preview-btn" class="modal-btn secondary">✖ 返回工作</button>
+            <button id="download-photo-btn" class="modal-btn">⬇️ 保存照片</button>
+        </div>
+    </div>
 
     <!-- 摄像头画中画 -->
     <div id="pip-container">
@@ -334,13 +471,23 @@
         camera.position.set(0, 9, 23);
         camera.lookAt(0, 0, 0);
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        // 修改：增加 preserveDrawingBuffer 允许通过 canvas.toDataURL 截图
+        const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         renderer.outputEncoding = THREE.sRGBEncoding;
         container.appendChild(renderer.domElement);
+
+        // 鼠标拖拽控制视角 (OrbitControls)
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; // 增加滑动阻尼感，视角更顺滑
+        controls.dampingFactor = 0.05;
+        controls.enablePan = false; // 禁止右键平移，保证陶泥在画面中心
+        controls.maxPolarAngle = Math.PI / 2; // 限制视角最低到平视桌面，不能看到桌子下面
+        controls.minDistance = 10;
+        controls.maxDistance = 45;
 
         // ==========================================
         // 灯光设置
@@ -479,6 +626,111 @@
         clayMesh.receiveShadow = true;
         scene.add(clayMesh);
 
+        // ==========================================
+        // 右侧扩展功能 (拍立得截图 & 保存3D模型)
+        // ==========================================
+        const photoBtn = document.getElementById('photo-btn');
+        const flashEffect = document.getElementById('flash-effect');
+        const previewModal = document.getElementById('photo-preview-modal');
+        const previewImage = document.getElementById('preview-image');
+        const downloadPhotoBtn = document.getElementById('download-photo-btn');
+        const closePreviewBtn = document.getElementById('close-preview-btn');
+
+        photoBtn.addEventListener('click', () => {
+            // 1. 触发闪光灯特效
+            flashEffect.classList.remove('flash-anim');
+            void flashEffect.offsetWidth; // 触发重绘以重新开始动画
+            flashEffect.classList.add('flash-anim');
+
+            // 2. 确保渲染最新一帧 (隐藏辅助线/光标以获得干净的图像)
+            const wasSawVisible = sawLine.visible;
+            const wasCursorVisible = cursorMesh.visible;
+            sawLine.visible = false;
+            cursorMesh.visible = false;
+            renderer.render(scene, camera);
+
+            const webglCanvas = renderer.domElement;
+            const w = webglCanvas.width;
+            const h = webglCanvas.height;
+            
+            // 计算截图区域 (取画面中间的方形)
+            const size = Math.min(w, h);
+            const sx = (w - size) / 2;
+            const sy = (h - size) / 2;
+
+            // 创建拍立得画布
+            const pCanvas = document.createElement('canvas');
+            const pSize = 800; // 内部照片尺寸
+            const padding = 40; // 左右上边距
+            const bottomPadding = 180; // 下边距留白
+            
+            pCanvas.width = pSize + padding * 2;
+            pCanvas.height = pSize + padding + bottomPadding;
+            const ctx = pCanvas.getContext('2d');
+            
+            // 绘制白色拍立得底板
+            ctx.fillStyle = '#FAFAFA';
+            ctx.fillRect(0, 0, pCanvas.width, pCanvas.height);
+            
+            // 添加一点微弱的边框描边
+            ctx.strokeStyle = '#EEEEEE';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(1, 1, pCanvas.width - 2, pCanvas.height - 2);
+
+            // 绘制 WebGL 截图
+            ctx.drawImage(webglCanvas, sx, sy, size, size, padding, padding, pSize, pSize);
+            
+            // 添加内阴影/边框效果
+            ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(padding, padding, pSize, pSize);
+
+            // 底部文字
+            ctx.fillStyle = '#555555';
+            ctx.font = 'italic 36px "Segoe UI", Tahoma, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('My Pottery Art 🏺', pCanvas.width / 2, pCanvas.height - 70);
+
+            // 恢复原有UI状态
+            sawLine.visible = wasSawVisible;
+            cursorMesh.visible = wasCursorVisible;
+
+            // 3. 显示照片预览弹窗
+            previewImage.src = pCanvas.toDataURL('image/png');
+            previewModal.classList.add('show');
+        });
+
+        // 关闭预览弹窗
+        closePreviewBtn.addEventListener('click', () => {
+            previewModal.classList.remove('show');
+        });
+
+        // 在弹窗中点击下载照片
+        downloadPhotoBtn.addEventListener('click', () => {
+            const link = document.createElement('a');
+            link.download = 'pottery-polaroid.png';
+            link.href = previewImage.src;
+            link.click();
+        });
+
+        const exportBtn = document.getElementById('export-btn');
+        exportBtn.addEventListener('click', () => {
+            const exporter = new THREE.GLTFExporter();
+            // 仅导出陶泥本身 (包含它的自定义彩绘纹理)
+            exporter.parse(clayMesh, function (gltf) {
+                const output = gltf;
+                const blob = new Blob([output], { type: 'application/octet-stream' });
+                const link = document.createElement('a');
+                link.style.display = 'none';
+                link.href = URL.createObjectURL(blob);
+                link.download = 'my_pottery.glb';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }, { binary: true });
+        });
+
+
         // 陶泥底色选择事件监听
         const baseColorBtns = document.querySelectorAll('.base-color-btn');
         baseColorBtns.forEach(btn => {
@@ -547,6 +799,29 @@
             });
         });
 
+        // 让完全隐藏的原生选色框能被正常触发点击
+        const customBrushBtn = document.getElementById('custom-brush-btn');
+        const customBrushInput = document.getElementById('custom-brush-input');
+        
+        customBrushBtn.addEventListener('click', (e) => {
+            if (e.target !== customBrushInput) {
+                customBrushInput.click();
+            }
+        });
+
+        // 画笔颜色自定义事件监听
+        customBrushInput.addEventListener('input', (e) => {
+            const color = e.target.value;
+            customBrushBtn.setAttribute('data-color', color);
+            customBrushBtn.style.background = color;
+            
+            if (!customBrushBtn.classList.contains('selected')) {
+                brushColorBtns.forEach(b => b.classList.remove('selected'));
+                customBrushBtn.classList.add('selected');
+            }
+            currentBrushColor = color;
+        });
+
         // 画笔粗细滑块
         const brushSizeSlider = document.getElementById('brush-size-slider');
         brushSizeSlider.addEventListener('input', (e) => {
@@ -560,6 +835,8 @@
             // 清除画笔痕迹
             strokeCtx.clearRect(0, 0, TEX_SIZE, TEX_SIZE);
             updateTexture();
+            // 重置视角
+            controls.reset();
         });
 
         const positionAttribute = clayGeometry.attributes.position;
@@ -628,12 +905,15 @@
         let isGrabbingClay = false;
 
         function shapeClay(ny, targetRadius, intensity) {
-            const centerIdx = Math.round(ny * heightSegments);
+            let centerIdx = Math.round(ny * heightSegments);
+            // 限制手势中心高度不能超过被切割的顶层（使得瓶口能够继续被塑形）
+            centerIdx = Math.min(centerIdx, cutLevel);
+
             const brushSize = 6; 
 
             for (let i = -brushSize; i <= brushSize; i++) {
                 const idx = centerIdx + i;
-                if (idx >= 0 && idx <= heightSegments && idx < cutLevel) {
+                if (idx >= 0 && idx <= heightSegments && idx <= cutLevel) { 
                     const falloff = Math.exp(-(i * i) / (brushSize * brushSize * 0.4));
                     clayProfile[idx] = THREE.MathUtils.lerp(clayProfile[idx], targetRadius, intensity * falloff);
                     clayProfile[idx] = Math.max(0.05 + clayThickness, Math.min(clayProfile[idx], 4.2));
@@ -681,7 +961,11 @@
                         const clayBottom = clayMesh.position.y - clayHeight / 2;
                         let ny = (newTargetCursorY - clayBottom) / clayHeight;
                         const segmentIdx = Math.max(0, Math.min(heightSegments, Math.round(ny * heightSegments)));
-                        const currentClayRadius = clayProfile[segmentIdx];
+                        
+                        // 判断是否捏在陶泥上时，需要获取当前切割面处的真实半径，而不是虚拟切掉部分的半径
+                        const effectiveSegmentIdx = Math.min(segmentIdx, cutLevel);
+                        const currentClayRadius = clayProfile[effectiveSegmentIdx];
+                        
                         const currentHandRadius = Math.abs(newTargetCursorX);
 
                         if (currentHandRadius <= currentClayRadius + 0.3 && ny >= -0.05 && ny <= 1.05) {
@@ -725,6 +1009,9 @@
 
         function animate() {
             requestAnimationFrame(animate);
+
+            // 更新鼠标视角的控制
+            controls.update();
 
             cursorX = THREE.MathUtils.lerp(cursorX, targetCursorX, 0.2);
             cursorY = THREE.MathUtils.lerp(cursorY, targetCursorY, 0.2);
